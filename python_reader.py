@@ -10,7 +10,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import time
-#bite 
+#bibli grideye
 
 size = 8
 T_min = 20
@@ -70,7 +70,7 @@ while(1): #Infinit loop
             print(serialString.decode('Ascii'))
             
             serialList=serialString.decode('Ascii')
-            """
+            
             L = []
             k = 0
             for value in serialList :
@@ -95,7 +95,7 @@ while(1): #Infinit loop
             ax.imshow(serialMatrix, interpolation = 'bicubic', cmap='jet', vmin = 15, vmax = 40)
             plt.show()
            
-            """
+            
             # Tell the device connected over the serial port that we recevied the data!
             # The b at the beginning is used to indicate bytes!
         except :
