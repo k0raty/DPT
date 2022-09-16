@@ -1,0 +1,50 @@
+#include <Wire.h>
+
+int ADDRESS = 0x69;
+int command[64] = {0x80, 0x82, 0x84, 0x86, 0x88, 0x8A, 0x8C, 0x8E, 0x90, 0x92, 0x94, 0x96, 0x98, 0x9A, 0x9C, 0x9E, 0xA0, 0xA2, 0xA4, 0xA6, 0xA8, 0xAA, 0xAC, 0xAE, 0xB0, 0xB2, 0xB4, 0xB6, 0xB8, 0xBA, 0xBC, 0xBE, 0xC0, 0xC2, 0xC4, 0xC6, 0xC8, 0xCA, 0xCC, 0xCE, 0xD0, 0xD2, 0xD4, 0xD6, 0xD8, 0xDA, 0xDC, 0xDE, 0xE0, 0xE2, 0E4, 0xE6, 0xE8, 0xEA, 0xEC, 0xEE, 0xF0, 0xF2, 0xF4, 0xF6, 0xF8, 0xFA, 0xFC, 0xFE};
+int pixels[64];
+
+int X0;
+int i;
+
+void setup() {
+  byte error;
+  // put your setup code here, to run once:
+  Wire.begin();
+  Serial.begin(9600);
+  delay (100);
+  Wire.beginTransmission(ADDRESS);
+  Wire.write(8);  
+  Wire.write(4);
+  error=Wire.endTransmission();
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  for (i=1 ; i <= 64 ; i++){
+    Wire.beginTransmission(ADDRESS);
+    Wire.write(command[i]);
+   
+    Wire.endTransmission();
+
+    Wire.requestFrom(ADDRESS,2);
+
+    if(Wire.available ()<=2)
+    {
+      X0 = Wire.read();
+    }
+    pixels[i-1]=X0;
+  }
+  Serial.print("[");
+  for(int i=1; i<=64; i++){
+    Serial.print(pixels[i-1]);
+    Serial.print(", ");
+    if( i%8 == 0 ) Serial.println();
+  }
+  Serial.println("]");
+  Serial.println();
+
+  //delay a second
+  delay(1000);
+   
+}
