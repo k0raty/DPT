@@ -27,7 +27,7 @@ class acquisition_signal_capteur() :
         
 
         # Démarrage Acquisition #
-        
+        """
         self.task = nidaqmx.Task()
         self.task.ai_channels.add_ai_voltage_chan("Dev1/ai0",terminal_config=TerminalConfiguration.RSE)
         self.task.timing.cfg_samp_clk_timing((frequence), source='', active_edge=nidaqmx.constants.Edge.RISING, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=self.numberOfSamples*5)
@@ -39,7 +39,7 @@ class acquisition_signal_capteur() :
             
         self.task.stop
         self.task.close()
-        
+        """
     def acquisition_signal(self,i):
         frequence=self.frequence
         numberOfSamples=self.numberOfSamples
