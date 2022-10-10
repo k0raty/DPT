@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-import time
+from tkinter.ttk import Progressbar
 
 ### Création de fonctions
 
@@ -16,21 +16,56 @@ def show_next_window():
     if(varOS.get() == 2):
         return show_error_window()
 
-    next_window = tk.Toplevel(app)
-    next_window.geometry("560x480")
-
-    labelTime = tk.Label(next_window, text = "Durée d'aquisition : " + str(varTime.get()) + " s")
-    labelTime.pack()
 
     if(varMeth.get() == 0):
-        next_window.title("Méthode 1")
+        return methode1()
     if(varMeth.get() == 1):
         next_window.title("Méthode 2")
     if(varMeth.get() == 2):
         next_window.title("Méthode 3")
 
 
+def methode1():
+    next_window = tk.Toplevel(app)
+    next_window.geometry("560x480")
+    labelTime = tk.Label(next_window, text = "Durée d'aquisition : " + str(varTime.get()) + " s")
+    labelTime.pack()
+    next_window.title("Méthode 1")
+    my_progress = Progressbar(next_window, orient="horizontal",length=500,mode='determinate')
 
+    def bar():
+        import time
+        for acquisition in range(1, varNbreAcquis.get()):
+
+            my_progress['value'] = (acquisition/varNbreAcquis.get())*100
+            next_window .update_idletasks()
+            time.sleep((varTime.get()))
+            labelAcq = tk.Label(next_window, text = "Acquisition " + str(acquisition))
+            labelAcq.pack()
+
+        my_progress['value'] = 100
+        labelAcq = tk.Label(next_window, text = "Acquisition " + str(acquisition))
+        labelAcq.pack()
+        label = tk.Label(next_window, text = "Terminé")
+        label.pack()
+
+    tk.Button(next_window, text = 'Start', command = bar).pack(pady = 10)
+    my_progress.pack()
+
+
+def methode2():
+    next_window = tk.Toplevel(app)
+    next_window.geometry("560x480")
+    labelTime = tk.Label(next_window, text = "Durée d'aquisition : " + str(varTime.get()) + " s")
+    labelTime.pack()
+    next_window.title("Méthode 2")
+
+def methode3():
+    next_window = tk.Toplevel(app)
+    next_window.geometry("560x480")
+    labelTime = tk.Label(next_window, text = "Durée d'aquisition : " + str(varTime.get()) + " s")
+    labelTime.pack()
+    next_window.title("Méthode 3")
 
 
 ### Création fenetre principale
@@ -57,6 +92,7 @@ method_frame.pack(fill = "x")
 varOS = tk.IntVar()
 varMeth = tk.IntVar()
 varTime = tk.IntVar()
+varNbreAcquis = tk.IntVar()
 
 ### Création widgets
 
@@ -65,6 +101,7 @@ radio_widget_Windows = tk.Radiobutton(OSframe, text = "Windows", value = 1, vari
 radio_widget_Linux = tk.Radiobutton(OSframe, text = "Linux", value = 2, variable = varOS)
 
 scale_w = tk.Scale(time_frame, from_ = 0, to = 100, tickinterval = 50, orient="horizontal", length = 200, variable = varTime)
+nbre_acquis = entry = tk.Entry(time_frame, textvariable = varNbreAcquis)
 
 continue_button = tk.Button(app, text = "Continue", command = show_next_window)
 
@@ -80,6 +117,8 @@ radio_widget_meth3 = tk.Radiobutton(method_frame, text = "Méthode 3", value = 2
 radio_widget_MacOS.pack()
 radio_widget_Windows.pack()
 radio_widget_Linux.pack()
+
+nbre_acquis.pack()
 
 radio_widget_meth1.pack()
 radio_widget_meth2.pack()
