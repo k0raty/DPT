@@ -17,99 +17,55 @@ class acquisition_signal_capteur() :
     """
 
 
-    def __init__(self, frequence = 100000, T = 10):
+    def __init__(self, frequence = 100000, T = 10, n = 5):
 
         self.frequence = frequence
         self.T = T
+        self.n = n
         self.numberOfSamples = T*frequence
-        self.Liste = np.zeros((self.numberOfSamples,2)) * np.nan
-        self.Liste2 = np.zeros((self.numberOfSamples,2)) * np.nan
-        self.Liste3 = np.zeros((self.numberOfSamples,2)) * np.nan
-        self.Liste4 = np.zeros((self.numberOfSamples,2)) * np.nan
-        self.Liste5 = np.zeros((self.numberOfSamples,2)) * np.nan
-
+        self.Liste= [np.zeros((self.numberOfSamples,2)) * np.nan for i in range(0,n)]
+        
 
         # Démarrage Acquisition #
-
+        
         self.task = nidaqmx.Task()
         self.task.ai_channels.add_ai_voltage_chan("Dev1/ai0",terminal_config=TerminalConfiguration.RSE)
         self.task.timing.cfg_samp_clk_timing((frequence), source='', active_edge=nidaqmx.constants.Edge.RISING, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=self.numberOfSamples*5)
         self.task.start()
-
-    def acquisition_signal1(numberOfSamples, frequence, self):
-        Liste = self.Liste
+        
+        #Acquisition
+        for i in range(0,n):
+            self.acquisition_signal(i)
+            
+        self.task.stop
+        self.task.close()
+        
+    def acquisition_signal(self,i):
+        frequence=self.frequence
+        numberOfSamples=self.numberOfSamples
+        Liste = self.Liste[i]
         value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
-            self.Liste[i,0] = i/frequence
-            self.Liste[i,1] = val
+            Liste[i,0] = i/frequence
+            Liste[i,1] = val
             i=i+1
-        print('SIGNAL 1 OK')
+        print('SIGNAL %d OK' %i)
 
-    def acquisition_signal2(numberOfSamples, frequence, self):
-        value = self.task.read(numberOfSamples)
-        i=1
-        while i<numberOfSamples :
-            val = value[i]
-            self.Liste2[i,0] = i/frequence
-            self.Liste2[i,1] = val
-            i=i+1
-        print('SIGNAL 2 OK')
 
-    def acquisition_signal3(self,numberOfSamples, frequence):
-        value = self.task.read(numberOfSamples)
-        i=1
-        while i<numberOfSamples :
-            val = value[i]
-            self.Liste3[i,0] = i/frequence
-            self.Liste3[i,1] = val
-            i=i+1
-        print('SIGNAL 3 OK')
 
-    def acquisition_signal4(self,numberOfSamples, frequence, Liste4):
-        value = self.task.read(numberOfSamples)
-        i=1
-        while i<numberOfSamples :
-            val = value[i]
-            Liste4[i,0] = i/frequence
-            Liste4[i,1] = val
-            i=i+1
-        print('SIGNAL 4 OK')
+    def to_excel(self):
+        
+        for i in range(0,self.n):
+            df=pd.DataFrame(self.Liste[i])
+            df.to_excel('signal%d.xlsx'%i)
+            print('Enregistrement %d OK' %i)
+            
 
-    def acquisition_signal5(self,numberOfSamples, frequence, Liste5):
-        value = self.task.read(numberOfSamples)
-        i=1
-        while i<numberOfSamples :
-            val = value[i]
-            Liste5[i,0] = i/frequence
-            Liste5[i,1] = val
-            i=i+1
-        print('SIGNAL 5 OK')
-
-    def to_excel(Liste, Liste2, Liste3, Liste4, Liste5):
-
-        df1=pd.DataFrame(Liste)
-        df1.to_excel('signal0.xlsx')
-        print('Enregistrement 1 OK')
-        df2=pd.DataFrame(Liste2)
-        df2.to_excel('signal1.xlsx')
-        print('Enregistrement 2 OK')
-        df3=pd.DataFrame(Liste3)
-        df3.to_excel('signal3.xlsx')
-        print('Enregistrement 3 OK')
-        df4=pd.DataFrame(Liste4)
-        df4.to_excel('signal4.xlsx')
-        print('Enregistrement 4 OK')
-        df5=pd.DataFrame(Liste5)
-        df5.to_excel('signal5.xlsx')
-        print('Enregistrement 5 OK')
-
-    def affichage(Liste, Liste2, Liste3, Liste4, Liste5):
-        plt.plot(Liste[:,0],Liste[:,1],Liste2[:,0],Liste2[:,1],Liste3[:,0],Liste3[:,1],Liste4[:,0],Liste4[:,1],Liste5[:,0],Liste5[:,1])
+    def affichage(self,i):
+        plt.plot(self.Liste[i][:,0],self.Liste[i][:,1])
         plt.show()
 
 
-    def __end__(self):
-        self.task.stop
-        self.task.close()
+       
