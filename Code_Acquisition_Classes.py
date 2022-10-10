@@ -22,23 +22,23 @@ class acquisition_signal_capteur() :
         self.frequence = frequence
         self.T = T
         self.numberOfSamples = T*frequence
-        self.Liste = np.zeros((numberOfSamples,2)) * np.nan
-        self.Liste2 = np.zeros((numberOfSamples,2)) * np.nan
-        self.Liste3 = np.zeros((numberOfSamples,2)) * np.nan
-        self.Liste4 = np.zeros((numberOfSamples,2)) * np.nan
-        self.Liste5 = np.zeros((numberOfSamples,2)) * np.nan
+        self.Liste = np.zeros((self.numberOfSamples,2)) * np.nan
+        self.Liste2 = np.zeros((self.numberOfSamples,2)) * np.nan
+        self.Liste3 = np.zeros((self.numberOfSamples,2)) * np.nan
+        self.Liste4 = np.zeros((self.numberOfSamples,2)) * np.nan
+        self.Liste5 = np.zeros((self.numberOfSamples,2)) * np.nan
 
 
         # Démarrage Acquisition #
 
-        task = nidaqmx.Task()
-        task.ai_channels.add_ai_voltage_chan("Dev1/ai0",terminal_config=TerminalConfiguration.RSE)
-        task.timing.cfg_samp_clk_timing((frequence), source='', active_edge=nidaqmx.constants.Edge.RISING, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=numberOfSamples*5)
-        task.start()
+        self.task = nidaqmx.Task()
+        self.task.ai_channels.add_ai_voltage_chan("Dev1/ai0",terminal_config=TerminalConfiguration.RSE)
+        self.task.timing.cfg_samp_clk_timing((frequence), source='', active_edge=nidaqmx.constants.Edge.RISING, sample_mode=nidaqmx.constants.AcquisitionType.FINITE, samps_per_chan=self.numberOfSamples*5)
+        self.task.start()
 
     def acquisition_signal1(numberOfSamples, frequence, self):
         Liste = self.Liste
-        value = task.read(numberOfSamples)
+        value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
@@ -48,27 +48,27 @@ class acquisition_signal_capteur() :
         print('SIGNAL 1 OK')
 
     def acquisition_signal2(numberOfSamples, frequence, self):
-        value = task.read(numberOfSamples)
+        value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
-            Liste2[i,0] = i/frequence
-            Liste2[i,1] = val
+            self.Liste2[i,0] = i/frequence
+            self.Liste2[i,1] = val
             i=i+1
         print('SIGNAL 2 OK')
 
-    def acquisition_signal3(numberOfSamples, frequence, Liste3):
-        value = task.read(numberOfSamples)
+    def acquisition_signal3(self,numberOfSamples, frequence):
+        value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
-            Liste3[i,0] = i/frequence
-            Liste3[i,1] = val
+            self.Liste3[i,0] = i/frequence
+            self.Liste3[i,1] = val
             i=i+1
         print('SIGNAL 3 OK')
 
-    def acquisition_signal4(numberOfSamples, frequence, Liste4):
-        value = task.read(numberOfSamples)
+    def acquisition_signal4(self,numberOfSamples, frequence, Liste4):
+        value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
@@ -77,8 +77,8 @@ class acquisition_signal_capteur() :
             i=i+1
         print('SIGNAL 4 OK')
 
-    def acquisition_signal5(numberOfSamples, frequence, Liste5):
-        value = task.read(numberOfSamples)
+    def acquisition_signal5(self,numberOfSamples, frequence, Liste5):
+        value = self.task.read(numberOfSamples)
         i=1
         while i<numberOfSamples :
             val = value[i]
@@ -110,6 +110,6 @@ class acquisition_signal_capteur() :
         plt.show()
 
 
-    def __end__():
-        task.stop
-        task.close()
+    def __end__(self):
+        self.task.stop
+        self.task.close()
