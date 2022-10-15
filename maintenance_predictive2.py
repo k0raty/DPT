@@ -35,22 +35,32 @@ def methode1():
 
     def bar():
         import time
-        for acquisition in range(1, varNbreAcquis.get()):
+        labelPatientez = tk.Label(next_window, text = "Patientez")
+        labelPatientez.pack()
+        for acquisition in range(varNbreAcquis.get()):
 
             my_progress['value'] = (acquisition/varNbreAcquis.get())*100
             next_window .update_idletasks()
             time.sleep((varTime.get()))
-            labelAcq = tk.Label(next_window, text = "Acquisition " + str(acquisition))
+            labelAcq = tk.Label(next_window, text = "Acquisition " + str(acquisition+1))
             labelAcq.pack()
 
         my_progress['value'] = 100
-        labelAcq = tk.Label(next_window, text = "Acquisition " + str(acquisition))
-        labelAcq.pack()
         label = tk.Label(next_window, text = "Terminé")
         label.pack()
 
+        freq_frame = tk.LabelFrame(next_window, text="Sélectionner les fréquences f1 et f2 (Hz)")
+        freq_frame.pack(fill = "x")
+
+        f1 = tk.Entry(freq_frame, textvariable = varF1)
+        f2 = tk.Entry(freq_frame, textvariable = varF2)
+        f1.pack()
+        f2.pack()
+
     tk.Button(next_window, text = 'Start', command = bar).pack(pady = 10)
     my_progress.pack()
+
+
 
 
 def methode2():
@@ -84,8 +94,13 @@ OSframe.pack(fill = "x")
 time_frame = tk.LabelFrame(app, text="Temps d'acquisition (s)", )
 time_frame.pack(fill = "x")
 
+acquis_frame = tk.LabelFrame(app, text="Nombre d'acquisitions")
+acquis_frame.pack(fill = "x")
+
+
 method_frame = tk.LabelFrame(app, text="Méthode")
 method_frame.pack(fill = "x")
+
 
 ### Création des variables
 
@@ -93,6 +108,8 @@ varOS = tk.IntVar()
 varMeth = tk.IntVar()
 varTime = tk.IntVar()
 varNbreAcquis = tk.IntVar()
+varF1 = tk.IntVar()
+varF2 = tk.IntVar()
 
 ### Création widgets
 
@@ -101,7 +118,7 @@ radio_widget_Windows = tk.Radiobutton(OSframe, text = "Windows", value = 1, vari
 radio_widget_Linux = tk.Radiobutton(OSframe, text = "Linux", value = 2, variable = varOS)
 
 scale_w = tk.Scale(time_frame, from_ = 0, to = 100, tickinterval = 50, orient="horizontal", length = 200, variable = varTime)
-nbre_acquis = entry = tk.Entry(time_frame, textvariable = varNbreAcquis)
+nbre_acquis = tk.Entry(acquis_frame, textvariable = varNbreAcquis)
 
 continue_button = tk.Button(app, text = "Continue", command = show_next_window)
 
