@@ -9,7 +9,7 @@ class acquisition_signal_capteur() :
     frequence =
     T =  #s
     numberOfSamples = T*frequence
-    Liste =
+    Liste = 
     """
 
 
@@ -34,8 +34,6 @@ class acquisition_signal_capteur() :
             self.acquisition_signal(i)
 
         self.to_csv()
-        for i in range(0,n):
-            self.affichage(i)
 
         self.task.stop
         self.task.close()
@@ -58,16 +56,12 @@ class acquisition_signal_capteur() :
     def to_csv(self):
 
         for k in range(0,self.n):
-            self.Liste[0][0] = np.array([0,0]) #valeur initiale
+            self.Liste[k][0] = np.array([0,0]) #valeur initiale
             df=pd.DataFrame(self.Liste[k])
-            df.to_csv('signal%d.csv'%k)
+            df.to_csv('Signal_%d.csv'%k)
             print('Enregistrement %d OK' %k)
 
 
     def affichage(self,i):
         plt.plot(self.Liste[i][:,0],self.Liste[i][:,1])
         plt.show()
-
-if __name__ == "__main__":
-    with nidaqmx.Task() as task:
-        f=frame()
