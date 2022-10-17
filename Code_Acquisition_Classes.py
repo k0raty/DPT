@@ -70,4 +70,4 @@ class acquisition_signal_capteur() :
 
 if __name__ == "__main__":
     with nidaqmx.Task() as task:
-        a=acquisition_signal_capteur()
+        f=frame()
