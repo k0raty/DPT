@@ -22,7 +22,7 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self, Fs = 50000*2, duree = 10,nombre_signal=5):
+    def __init__(self,is_sig= False, Fs = 50000*2, duree = 10,nombre_signal=5):
     
         self.Fs = Fs
         self.nombre_signal=nombre_signal
@@ -34,20 +34,31 @@ class detection_default():
         self.signal_mgnet_fft=pd.DataFrame(columns=['frequence','Mag_fournier_transform','num'])
         self.signal_mgnet_fft_filtered=pd.DataFrame(columns=['frequence','Mag_fournier_transform'])
 
-
+        
         ###Opening signal###
-        for i in range(0,nombre_signal):
-            signal = open(f'mesure01\Signal_{i}.sig','r')
-            Amplitude=[]
-            Temps=[]
-            for x in signal :
-                sep=x.find('\t')
-                Temps.append(float(x[:sep]))
-                Amplitude.append(float(x[sep+1:-1]))
-            current_df=self.plot_signal(Temps,Amplitude,columns=['secondes','signal','num'],num=i,logy=False)
-            df=self.signal.append(current_df)
-            self.signal=df
-           
+        
+        if is_sig == True :
+            for i in range(0,nombre_signal):
+                signal = open(f'mesure01\Signal_{i}.sig','r')
+                Amplitude=[]
+                Temps=[]
+                for x in signal :
+                    sep=x.find('\t')
+                    Temps.append(float(x[:sep]))
+                    Amplitude.append(float(x[sep+1:-1]))
+                current_df=self.plot_signal(Temps,Amplitude,columns=['secondes','signal','num'],num=i,logy=False)
+                df=self.signal.append(current_df)
+                self.signal=df
+        else:
+            for i in range(0,nombre_signal):
+                
+                current_df = pd.read_csv(f'Signal_{i}.csv', sep=',')
+                current_df = current_df[['0','1']]
+                current_df = current_df.rename(columns={"0": "secondes", "1": "signal"})
+                current_df['num'] = i
+                current_df.plot(x='secondes', y = 'signal')
+                df=self.signal.append(current_df)
+                self.signal=df
    
 
     def nextpow2(self):
