@@ -23,7 +23,7 @@ class detection_default():
     """
     
     def __init__(self,is_sig= False, Fs = 50000*2, duree = 10,nombre_signal=5):
-    
+        
         self.Fs = Fs
         self.nombre_signal=nombre_signal
         self.duree = duree
@@ -57,19 +57,57 @@ class detection_default():
                 current_df = current_df.rename(columns={"0": "secondes", "1": "signal"})
                 current_df['num'] = i
                 current_df.plot(x='secondes', y = 'signal')
+                print(current_df)
                 df=self.signal.append(current_df)
+                print(df)
+
                 self.signal=df
    
 
     def nextpow2(self):
         return 1 if self.L == 0 else 2**math.ceil(math.log2(self.L))
     
-    def method_envelop(self):
+    def method_cepstrale(self , x0 = None, x1 = None):
+        """
+        Met en évidence les composantes périodiques d’un spectre - Utilisation en complément d’autres techniques
+        - Permet de localiser et déterminer l’origine des défauts induisant des chocs périodiques
+        - Interprétation de spectres complexes
+        
+        Le cepstre C est la transform´ee de Fourier appliqu´ee au logarithme de la transform
+        ´ee de Fourier d’une variable x(t) (2.22). Le r´esultat s’exprime selon une variable
+        uniforme au temps : les qu´efrences q. La transform´ee de Fourier d’un signal permet
+        de mettre en ´evidence les p´eriodicit´es d’un signal temporel. Ainsi, le cepstre met
+        en ´evidence les p´eriodicit´es d’une transform´ee de Fourier. Le cepstre fournit donc
+        une information sur l’existence de peignes de raies ainsi que sur leurs fr´equences
+        """
+        self.filtrage(x0,x1) #Tranformée du signal moyen
+        
+        signal_cepstrale_wrapper = self.signal_mgnet_fft_filtered.copy()
+        
+        #Elevation logarithmique
+        signal_cepstrale_wrapper['Mag_fournier_transform'] = signal_cepstrale_wrapper['Mag_fournier_transform'].apply(
+            np.log2,
+            axis=1
+        )
+        
+        #Transformée de Fournier
+        SF=self.fournier_transform(signal_cepstrale_wrapper['Mag_fournier_transform'])
+        w,mag_fft= self.fournier_magnitude(SF)
+        
+        #Plotting
+        columns=['quefrence (q)', 'Cepstre']
+        
+        self.signal_cepstrale=self.plot_signal(w,mag_fft,columns,logy=True)
+    def pre_filtrage(self):
+        
+        """
+        Transformée de fournier des signaux afin d'identifier les fréquences sur lesquelles travailler
+        Nécessaire pour n'importe quel méthode
+        """
         #1rt step :Mag_fournier_transform
         SM_list=[]
         for i in range(0,self.nombre_signal):
             signal=self.signal['signal'][self.signal['num']==i]
-
             S = self.fournier_transform(signal)
             SM_list.append(S)
             SM= self.mean_SM(SM_list)
@@ -86,7 +124,15 @@ class detection_default():
         print('Tapez la valeur de F1 et de F2 dans la méthode method_envelop_2')
             # Display grid
         #2nd step   
-    def method_envelop_2(self,x0,x1):
+    def filtrage(self,x0,x1):
+        
+        """
+        Transformée de fournier des signaux selon le filtrage nécessaire.
+        Utile pour n'importe quelle méthode
+        """
+        if (x0== None) | (x1 == None): #Pas de filtrage
+            return self.signal['signal']
+        
         b,a=self.pass_band_filter(x0, x1)
         sf_list=[]
         
@@ -110,6 +156,15 @@ class detection_default():
         columns=['frequence', 'Mag_fournier_transform']
       
         self.signal_mgnet_fft_filtered=self.plot_signal(w,mag_fft,columns,logy=True)
+        
+        return sfM
+        
+    def enveloppe(self, x0 = None ,x1 = None):
+        """
+        Méthode de l'enveloppe
+        """
+        
+        sfM = self.filtrage(x0,x1)
         #Hilbert
         H=self.hilbert_transform(sfM)
         
