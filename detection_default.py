@@ -12,7 +12,12 @@ from numpy.fft import fft, fftfreq
 import matplotlib.pyplot as plt
 import scipy.signal
 import sys
+from cepstrum import *
+import matplotlib.collections as collections
 
+#Suppression warning 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 class detection_default():
     """
     Fs = 50000*2;
@@ -22,9 +27,9 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self,is_sig= False, Fs = 50000*2, duree = 10,nombre_signal=5):
+    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5):
         
-        self.Fs = Fs
+        self.Fs = Fs #Fréquence d'échantillonage -> dépend de Fmaxi
         self.nombre_signal=nombre_signal
         self.duree = duree
         self.L = duree*Fs
@@ -66,43 +71,14 @@ class detection_default():
 
     def nextpow2(self):
         return 1 if self.L == 0 else 2**math.ceil(math.log2(self.L))
+        
     
-    def method_cepstrale(self , x0 = None, x1 = None):
-        """
-        Met en évidence les composantes périodiques d’un spectre - Utilisation en complément d’autres techniques
-        - Permet de localiser et déterminer l’origine des défauts induisant des chocs périodiques
-        - Interprétation de spectres complexes
-        
-        Le cepstre C est la transform´ee de Fourier appliqu´ee au logarithme de la transform
-        ´ee de Fourier d’une variable x(t) (2.22). Le r´esultat s’exprime selon une variable
-        uniforme au temps : les qu´efrences q. La transform´ee de Fourier d’un signal permet
-        de mettre en ´evidence les p´eriodicit´es d’un signal temporel. Ainsi, le cepstre met
-        en ´evidence les p´eriodicit´es d’une transform´ee de Fourier. Le cepstre fournit donc
-        une information sur l’existence de peignes de raies ainsi que sur leurs fr´equences
-        """
-        self.filtrage(x0,x1) #Tranformée du signal moyen
-        
-        signal_cepstrale_wrapper = self.signal_mgnet_fft_filtered.copy()
-        
-        #Elevation logarithmique
-        signal_cepstrale_wrapper['Mag_fournier_transform'] = signal_cepstrale_wrapper['Mag_fournier_transform'].apply(
-            np.log2,
-            axis=1
-        )
-        
-        #Transformée de Fournier
-        SF=self.fournier_transform(signal_cepstrale_wrapper['Mag_fournier_transform'])
-        w,mag_fft= self.fournier_magnitude(SF)
-        
-        #Plotting
-        columns=['quefrence (q)', 'Cepstre']
-        
-        self.signal_cepstrale=self.plot_signal(w,mag_fft,columns,logy=True)
-    def pre_filtrage(self):
+    def pre_filtrage(self , cut = True):
         
         """
         Transformée de fournier des signaux afin d'identifier les fréquences sur lesquelles travailler
         Nécessaire pour n'importe quel méthode
+        cut -> si on effectue déjà une préselection des fréquences
         """
         #1rt step :Mag_fournier_transform
         SM_list=[]
@@ -111,7 +87,7 @@ class detection_default():
             S = self.fournier_transform(signal)
             SM_list.append(S)
             SM= self.mean_SM(SM_list)
-            w,mag_fft=self.fournier_magnitude(SM)
+            w,mag_fft=self.fournier_magnitude(SM,cut)
             
             
             #Add to dataframe
@@ -130,8 +106,8 @@ class detection_default():
         Transformée de fournier des signaux selon le filtrage nécessaire.
         Utile pour n'importe quelle méthode
         """
-        if (x0== None) | (x1 == None): #Pas de filtrage
-            return self.signal['signal']
+        if (x0== None) | (x1 == None): #Pas de filtrage mais moyenne tout de même
+            return self.signal_mgnet_fft
         
         b,a=self.pass_band_filter(x0, x1)
         sf_list=[]
@@ -159,7 +135,7 @@ class detection_default():
         
         return sfM
         
-    def enveloppe(self, x0 = None ,x1 = None):
+    def enveloppe(self, x0 = None ,x1 = None , cepstrum = True):
         """
         Méthode de l'enveloppe
         """
@@ -172,13 +148,125 @@ class detection_default():
 
         self.envelop_signal=abs(fft(H,self.NFFT))
         wprime=np.arange(1,self.NFFT/2+2,1)/(self.NFFT/2 +1)*(self.Fs/2)#Commence à 1 ici
+        self.freq_vector = wprime
         mag_fft_prime=self.envelop_signal[1:int(self.NFFT/2 + 2)]
-
-        #Plotting signal
-        self.df_envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],logy=False)
         
+        #Plotting signal
+        self.envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],logy=False)
+        
+        #Analyse Cepstrale
+        if cepstrum == True :
+            self.cepstrum(mag_fft_prime, wprime)
+        
+    def cepstrum(self,X,freq_vector):
+        
+        """
+        Cepstrum of a signal.
+        
+        Met en évidence les composantes périodiques d’un spectre - Utilisation en complément d’autres techniques
+        - Permet de localiser et déterminer l’origine des défauts induisant des chocs périodiques
+        - Interprétation de spectres complexes
+        
+        Le cepstre C est la transform´ee de Fourier appliqu´ee au logarithme de la transform
+        ´ee de Fourier d’une variable x(t) (2.22). Le r´esultat s’exprime selon une variable
+        uniforme au temps : les qu´efrences q. La transform´ee de Fourier d’un signal permet
+        de mettre en ´evidence les p´eriodicit´es d’un signal temporel. Ainsi, le cepstre met
+        en ´evidence les p´eriodicit´es d’une transform´ee de Fourier. Le cepstre fournit donc
+        une information sur l’existence de peignes de raies ainsi que sur leurs fr´equences
+        
+        C'est une méthode complémentaire d'analyse.
+
+        Returns
+        -------
+        Cesptrum of the signal.
+
+        """
+        log_X = np.log(np.abs(X))
+        cepstrum = np.fft.rfft(log_X)
+        df = freq_vector[1] - freq_vector[0]
+        quefrency_vector = np.fft.rfftfreq(log_X.size, df)
+        
+        #Plotting
+        columns=['quefrence (q)', 'Cepstre']
+        
+        self.cepstrum=self.plot_signal(quefrency_vector,np.abs(cepstrum),columns,logy=False)
+
+    def extract_pitch(self,quefrence_min,quefrence_max):
+        """
+        One thing that makes a robust identificiation difficult is that there are also several other peaks, 
+        as well as a strong component at zero quefrency. This is mentioned in the 1964 paper by Noll,
+        “Short‐Time Spectrum and ‘Cepstrum’ Techniques for Vocal‐Pitch Detection.”, 
+        who attenuates the low quefrency components, which are expected to be high 
+        since the log magnitude of the spectrum has a nonzero mean.
+
+        Returns
+        -------
+        None.
+
+        """
+        cepstrum = self.cepstrum['Cepstre'].to_numpy()
+        quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
+        
+        fig, ax = plt.subplots()
+        ax.vlines(0.0310, 0, np.max(np.abs(cepstrum)), alpha=.2, lw=3, label='expected peak')
+        ax.plot(quefrency_vector, np.abs(cepstrum))
+        valid = (quefrency_vector > quefrence_min) & (quefrency_vector <= quefrence_max)
+        collection = collections.BrokenBarHCollection.span_where(
+            quefrency_vector, ymin=0, ymax=np.abs(cepstrum).max(), where=valid, facecolor='green', alpha=0.5, label='valid pitches')
+        ax.add_collection(collection)
+        ax.set_xlabel('quefrency (s)')
+        ax.set_title('cepstrum')
+        ax.legend()
+        
+    def cepstrum_f0_detection(self, fmin=10, fmax=80):
+        """
+        Returns f0 based on cepstral processing.
+        Permet alors de reconnaître les pics caratéristiques.
+        Parameters
+        ----------
+        fmin : TYPE, optional
+            DESCRIPTION. The default is 10.
+        fmax : TYPE, optional
+            DESCRIPTION. The default is 80.
+
+        Returns
+        -------
+        f0 : TYPE
+            DESCRIPTION.
+
+        """
+        # extract peak in cepstrum in valid region
+        cepstrum = self.cepstrum['Cepstre'].to_numpy()
+        quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
+
+        valid = (quefrency_vector > 1/fmax) & (quefrency_vector <= 1/fmin)
+        max_quefrency_index = np.argmax(np.abs(cepstrum)[valid])
+        f0 = 1/quefrency_vector[valid][max_quefrency_index]
+        return f0
     
-   
+    def evaluate_method(self,f0s=[]): #Checkpoint
+        
+        sample_freq = self.Fs
+        
+        cepstrum = self.cepstrum['Cepstre'].to_numpy()
+        
+        
+        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
+        
+        for ax, sample_freq_var in zip([ax1, ax2], 
+                                       [sample_freq, 2 * sample_freq]):
+            
+            f0s = np.linspace(83, 639, num=100)
+            cepstrum_f0s = []
+            for f0 in f0s:
+                cepstrum_f0s.append(self.cepstrum_f0_detection(cepstrum, sample_freq_var))
+            ax.plot(f0s, cepstrum_f0s, '.')
+           # ax.plot(f0s, f0s, label='expected', alpha=.2)
+            ax.legend()
+            ax.set_xlabel('true f0 (Hz)')
+            ax.set_ylabel('cepstrum based f0 (Hz)')
+            ax.set_title(f'sampling frequency {sample_freq_var} Hz')
+        
     def pass_band_filter(self,x0,x1):
         assert len(self.signal_mgnet_fft)>0,"Veuillez d'abord procéder à la première méthode !"
 
@@ -202,12 +290,18 @@ class detection_default():
         H=abs(( scipy.signal.hilbert(signal)))
         return H
     
-    def fournier_magnitude(self,SM):
+    def fournier_magnitude(self,SM, cut = True):
         #Renvoie la magnitude du signal
         S2 = SM**2
-        w=np.arange(0,self.NFFT/2+2,1)/(self.NFFT/2 +1)*(self.Fs/2)    
-        mag_fft=S2[:int(self.NFFT/2 + 2)]
+        
+        if(cut) :
+            w=np.arange(0,self.NFFT/2+2,1)/(self.NFFT/2 +1)*(self.Fs/2)    
+            mag_fft=S2[:int(self.NFFT/2 + 2)]
+        else :
+            w = np.arange(0,len(S2))/(self.NFFT/2 +1)*(self.Fs/2)  
+            mag_fft = S2
         return w,mag_fft
+    
     
     def mean_SM(self,SM_list: list):
         SM=sum(SM_list)/len(SM_list)
