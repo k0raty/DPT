@@ -12,7 +12,6 @@ from numpy.fft import fft, fftfreq
 import matplotlib.pyplot as plt
 import scipy.signal
 import sys
-from cepstrum import *
 import matplotlib.collections as collections
 
 #Suppression warning 
@@ -27,9 +26,12 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5):
+    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5, precision = 5, seuil = 0.5):
         
         self.Fs = Fs #Fréquence d'échantillonage -> dépend de Fmaxi
+        self.precision = precision #Précision de l'échantillonage du cepstre
+        self.seuil = seuil #|f_mesuré - f_anomalie| < Epsilon, seuil d'acceptation d'égalité entre fréquence de défaut et fréquence du cepstre.  
+        self.table_defaut = pd.read_excel("Data_defauts.xlsx").sort_values(by='Hz')
         self.nombre_signal=nombre_signal
         self.duree = duree
         self.L = duree*Fs
@@ -153,7 +155,6 @@ class detection_default():
         
         #Plotting signal
         self.envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],logy=False)
-        
         #Analyse Cepstrale
         if cepstrum == True :
             self.cepstrum(mag_fft_prime, wprime)
@@ -208,7 +209,7 @@ class detection_default():
         quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
         
         fig, ax = plt.subplots()
-        ax.vlines(0.0310, 0, np.max(np.abs(cepstrum)), alpha=.2, lw=3, label='expected peak')
+#        ax.vlines(0.0310, 0, np.max(np.abs(cepstrum)), alpha=.2, lw=3, label='expected peak')
         ax.plot(quefrency_vector, np.abs(cepstrum))
         valid = (quefrency_vector > quefrence_min) & (quefrency_vector <= quefrence_max)
         collection = collections.BrokenBarHCollection.span_where(
@@ -235,15 +236,79 @@ class detection_default():
             DESCRIPTION.
 
         """
+        print(fmin,fmax)
         # extract peak in cepstrum in valid region
         cepstrum = self.cepstrum['Cepstre'].to_numpy()
         quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
-
         valid = (quefrency_vector > 1/fmax) & (quefrency_vector <= 1/fmin)
+        
+        self.extract_pitch(1/fmax,1/fmin)
         max_quefrency_index = np.argmax(np.abs(cepstrum)[valid])
         f0 = 1/quefrency_vector[valid][max_quefrency_index]
         return f0
     
+    def highlight_pics(self, df:pd.DataFrame()):
+        """
+        Mets en évidence les fréquences caractéristiques de chaque défaut.
+        """
+        assert len(self.envelop_signal) >0, "Veuillez d'abord appliquer une méthode !"
+        assert len(self.defauts) >0, "Veuillez d'abord détecter les défauts !"
+        
+        fig, ax = plt.subplots(1, 1,figsize=(20,10))
+        
+        df['pics']=df.apply(lambda x : self.envelop_signal['Amplitude'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
+        
+        self.envelop_signal.plot(x= 'fréquence (Hz)', y = 'Amplitude' , ax = ax, label = "Spectre démodulé")
+        
+        df.plot(x = 'f0' , y = 'pics', kind = 'scatter', marker='X', ax = ax ,c = 'red', label ="Défauts détectés")
+    
+    def find_neighbours(self,value, df, colname):
+        """
+        find the nearest neighbours in a column of the dataframe 
+
+        Parameters
+        ----------
+        value : value to approach
+        df : dataframe
+        colname : column to search in
+
+        Returns
+        -------
+        Index of nearest neighbour
+
+        """
+        exactmatch = df[df[colname] == value]
+        if not exactmatch.empty:
+            return exactmatch.index
+        else:
+            lowerneighbour_ind = df[df[colname] < value][colname].idxmax()
+            upperneighbour_ind = df[df[colname] > value][colname].idxmin()
+            neighbours =[lowerneighbour_ind,upperneighbour_ind]
+            neighbour = np.argmin([abs(df.index[lowerneighbour_ind]-value), abs(df.index[upperneighbour_ind]-value)])
+        return neighbours[neighbour]
+        
+    def detect_default(self):
+        
+        assert len(self.cepstrum)>0, "Veuillez d'abord calculer le cepstre !"
+        
+        df=self.table_defaut.copy()
+        df=df.set_index('Défauts')
+        df['f_under'] = df['Hz'].shift(periods = 1, fill_value = math.floor(df['Hz'].min())).round() #Décale la colonne des Hz vers le haut et arrondi par excés
+        df['f_over'] = df['Hz'].shift(periods = -1, fill_value = round(df['Hz'].max())).apply(np.floor) #Décale la colonne des Hz vers le bas et arrondi par défault (sauf le dernier)
+        df['fmax'] = df.apply(lambda x : min(round(x['Hz'] + self.precision), x['f_over']), axis = 1) #Récupère le fmax adapté , + petit que la fréq du défaut suivant et pas trop éloignée de la fréq actuelle également.
+        df['fmin'] = df.apply(lambda x : max(round(x['Hz'] - self.precision), x['f_under'] ), axis = 1) #Récupère le fmin adapté , + grand que la fréq du défaut précédent et pas trop éloignée de la fréq actuelle également.
+        df['f0'] = df.apply(
+            lambda x: self.cepstrum_f0_detection(fmin = x['fmin'],fmax = x['fmax']),
+            axis=1
+        )
+        df['is_default'] = df.apply(lambda x : abs(x['Hz']-x['f0']) < self.seuil ,axis = 1)
+        self.defauts = df
+        df = df[df['is_default'] == True]
+        df = df.filter(['Hz','f0'])
+        df.to_excel('Défauts.xlsx')
+        self.highlight_pics(df)
+        return df
+        
     def evaluate_method(self,f0s=[]): #Checkpoint
         
         sample_freq = self.Fs
