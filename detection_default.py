@@ -64,9 +64,7 @@ class detection_default():
                 current_df = current_df.rename(columns={"0": "secondes", "1": "signal"})
                 current_df['num'] = i
                 current_df.plot(x='secondes', y = 'signal')
-                print(current_df)
                 df=self.signal.append(current_df)
-                print(df)
 
                 self.signal=df
    
@@ -125,7 +123,7 @@ class detection_default():
         
         
         self.df_sfM=self.plot_signal(self.t,sfM,columns=['seconde','signal_moyen'],logy=False)
-        
+        self.df_sfM.to_excel('signal_temporel_filtré.xlsx')
         
         SF=self.fournier_transform(self.df_sfM['signal_moyen'])
         w,mag_fft= self.fournier_magnitude(SF)
@@ -157,9 +155,9 @@ class detection_default():
         self.envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],logy=False)
         #Analyse Cepstrale
         if cepstrum == True :
-            self.cepstrum(mag_fft_prime, wprime)
+            self.cepstre(mag_fft_prime, wprime)
         
-    def cepstrum(self,X,freq_vector):
+    def cepstre(self,X,freq_vector):
         
         """
         Cepstrum of a signal.
@@ -188,7 +186,7 @@ class detection_default():
         quefrency_vector = np.fft.rfftfreq(log_X.size, df)
         
         #Plotting
-        columns=['quefrence (q)', 'Cepstre']
+        columns=['quefrence', 'cepstre']
         
         self.cepstrum=self.plot_signal(quefrency_vector,np.abs(cepstrum),columns,logy=False)
 
@@ -205,8 +203,8 @@ class detection_default():
         None.
 
         """
-        cepstrum = self.cepstrum['Cepstre'].to_numpy()
-        quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
+        cepstrum = self.cepstrum['cepstre'].to_numpy()
+        quefrency_vector = self.cepstrum['quefrence'].to_numpy()
         
         fig, ax = plt.subplots()
 #        ax.vlines(0.0310, 0, np.max(np.abs(cepstrum)), alpha=.2, lw=3, label='expected peak')
@@ -234,18 +232,21 @@ class detection_default():
         -------
         f0 : TYPE
             DESCRIPTION.
+        q0
 
         """
-        print(fmin,fmax)
+
         # extract peak in cepstrum in valid region
-        cepstrum = self.cepstrum['Cepstre'].to_numpy()
-        quefrency_vector = self.cepstrum['quefrence (q)'].to_numpy()
+        cepstrum = self.cepstrum['cepstre'].to_numpy()
+        quefrency_vector = self.cepstrum['quefrence'].to_numpy()
         valid = (quefrency_vector > 1/fmax) & (quefrency_vector <= 1/fmin)
         
         self.extract_pitch(1/fmax,1/fmin)
         max_quefrency_index = np.argmax(np.abs(cepstrum)[valid])
-        f0 = 1/quefrency_vector[valid][max_quefrency_index]
-        return f0
+        q0 = quefrency_vector[valid][max_quefrency_index]
+        cepstre = cepstrum[valid][max_quefrency_index]
+        f0 = 1/q0
+        return (f0 ,cepstre)
     
     def highlight_pics(self, df:pd.DataFrame()):
         """
@@ -256,8 +257,8 @@ class detection_default():
         
         fig, ax = plt.subplots(1, 1,figsize=(20,10))
         
-        df['pics']=df.apply(lambda x : self.envelop_signal['Amplitude'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
-        
+        df['pics'] = df.apply(lambda x : self.envelop_signal['Amplitude'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
+        df['f_pics'] = df.apply(lambda x : self.envelop_signal['fréquence (Hz)'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
         self.envelop_signal.plot(x= 'fréquence (Hz)', y = 'Amplitude' , ax = ax, label = "Spectre démodulé")
         
         df.plot(x = 'f0' , y = 'pics', kind = 'scatter', marker='X', ax = ax ,c = 'red', label ="Défauts détectés")
@@ -284,7 +285,7 @@ class detection_default():
             lowerneighbour_ind = df[df[colname] < value][colname].idxmax()
             upperneighbour_ind = df[df[colname] > value][colname].idxmin()
             neighbours =[lowerneighbour_ind,upperneighbour_ind]
-            neighbour = np.argmin([abs(df.index[lowerneighbour_ind]-value), abs(df.index[upperneighbour_ind]-value)])
+            neighbour = np.argmin([abs(df['fréquence (Hz)'].loc[lowerneighbour_ind]-value), abs(df['fréquence (Hz)'].loc[upperneighbour_ind]-value)])
         return neighbours[neighbour]
         
     def detect_default(self):
@@ -297,23 +298,47 @@ class detection_default():
         df['f_over'] = df['Hz'].shift(periods = -1, fill_value = round(df['Hz'].max())).apply(np.floor) #Décale la colonne des Hz vers le bas et arrondi par défault (sauf le dernier)
         df['fmax'] = df.apply(lambda x : min(round(x['Hz'] + self.precision), x['f_over']), axis = 1) #Récupère le fmax adapté , + petit que la fréq du défaut suivant et pas trop éloignée de la fréq actuelle également.
         df['fmin'] = df.apply(lambda x : max(round(x['Hz'] - self.precision), x['f_under'] ), axis = 1) #Récupère le fmin adapté , + grand que la fréq du défaut précédent et pas trop éloignée de la fréq actuelle également.
-        df['f0'] = df.apply(
+        df['f0_cepstre'] = df.apply(
             lambda x: self.cepstrum_f0_detection(fmin = x['fmin'],fmax = x['fmax']),
             axis=1
         )
-        df['is_default'] = df.apply(lambda x : abs(x['Hz']-x['f0']) < self.seuil ,axis = 1)
-        self.defauts = df
+        df['f0'],df['cepstre'] = df.apply(lambda x : x['f0_cepstre'][0],axis=1),df.apply(lambda x : x['f0_cepstre'][1],axis=1)
+        df = df.drop(columns = ['f0_cepstre'])
+        df['is_default'] = df.apply(lambda x : abs(x['Hz']-x['f0']) < self.seuil*min((abs(x['Hz']-x['f0'])/2*self.precision),1) ,axis = 1)
+        
         df = df[df['is_default'] == True]
+        limit = self.keep_outlier(self.cepstrum[self.cepstrum['quefrence']>1/df['Hz'].iloc[-1]],'cepstre') #On ne conserve que les quéfrences au dessus d'un certains seuil
+        limit = limit.sort_values(by='cepstre')['cepstre'].iloc[0]
+        df = df[df['cepstre']>limit]
         df = df.filter(['Hz','f0'])
+        
+        self.defauts = df
         df.to_excel('Défauts.xlsx')
         self.highlight_pics(df)
         return df
         
+    def keep_outlier(self,df, column):
+        
+        while 1 : #On ne conserve que les véritables outliers.
+             
+                fig1, ax1 = plt.subplots()
+                ax1.set_title("Répartition des cepstres sur le signal démodulé")
+                df.boxplot(column = column , ax = ax1)
+                q75,q25 = np.percentile(df[column].dropna(),[75,25])
+                intr_qr = q75-q25
+                max = q75+(1.5*intr_qr)
+                filter = (df[column] >= max) 
+                if(len(df[filter]) > 0):
+                    df=df[filter]
+                else :
+                    break
+        return df
+            
     def evaluate_method(self,f0s=[]): #Checkpoint
         
         sample_freq = self.Fs
         
-        cepstrum = self.cepstrum['Cepstre'].to_numpy()
+        cepstrum = self.cepstrum['cepstre'].to_numpy()
         
         
         fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10, 5))
@@ -333,7 +358,6 @@ class detection_default():
             ax.set_title(f'sampling frequency {sample_freq_var} Hz')
         
     def pass_band_filter(self,x0,x1):
-        assert len(self.signal_mgnet_fft)>0,"Veuillez d'abord procéder à la première méthode !"
 
         print('F1 is: ',x0)
         print('F2 is: ',x1)
