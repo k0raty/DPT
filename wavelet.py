@@ -1,28 +1,70 @@
+"""
+https://pywavelets.readthedocs.io/en/latest/ref/cwt.html
+http://www.pyrunner.com/weblog/2016/08/01/optimal-svht/
+call mathlab function : 
+    https://fr.mathworks.com/help/matlab/matlab_external/call-matlab-functions-from-python.html
+    inverse cwt : https://fr.mathworks.com/help/wavelet/gs/inverse-continuous-wavelet-transform.html
+    reconstruct the signal from a cwt process : 
+        https://fr.mathworks.com/help/wavelet/ug/signal-reconstruction-from-continuous-wavelet-transform-coefficients.html
+inverse dwt: 
+    https://pywavelets.readthedocs.io/en/latest/ref/idwt-inverse-discrete-wavelet-transform.html
+find threshold : thresholds are only for dwt...it is an approx to focus on frequencies (the lower the better)
+    file:///C:/Users/anton/Downloads/machines-10-00649.pdf
+details coefficient and threshold : 
+    https://www.sciencedirect.com/topics/engineering/detail-coefficient
+"""
 import numpy as np
 
 import pywt
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
+
 fs = 50000*2
 
 dt = 1/fs
 
-frequencies = np.array([8.333, 63.731, 31.865, 93.663, 72.964, 3.65, 4.683]) / fs # normalize
+frequencies = np.array([8.333, 63.731, 31.865, 93.663, 72.964, 3.65, 4.683])  # normalize
 
+ 
 def frequency2scale(frequence):
     """
     return frequencies relative to scales for a wavelet
     """
     Fc = pywt.central_frequency('cmor1.5-1.0', precision=8)
+  #  Fc = eng.centfrq('cmor1.5-1.0')
+    return Fc/(frequence*dt)
 
-    return Fc/(frequence*dt) 
+scales=list(map(frequency2scale,frequencies))
+assert any(frequencies.round(3) == (pywt.scale2frequency('cmor1.5-1.0' ,  scales)*10**5).round(3)) == True , "Problème sur les fréquences"
+signal = pd.read_csv('signal_temporel_filtré.csv',sep=',')
+coef, freqs = pywt.cwt(signal['signal_moyen'].to_numpy(),scales ,'cmor1.5-1.0', sampling_period = dt)
 
-#scales=list(map(frequency2scale,frequencies))
-scales = np.array([1., 2., 3., 4.])
-time_signal = pd.read_excel('signal_temporel_filtré.xlsx')
-wav = pywt.ContinuousWavelet(data = time_signal['signal_moyen'].to_numpy(), scales = scales , wavelet = 'cmor1.5-1.0')
 
+def valeur_seuillage(coef): #Appliquer un map
+    """
+    Le théorème de Donoho et Johnstone définit un seuil T pour les coefficients de la
+transformée en ondelettes
+    22ème Congrès Français de Mécanique
+    return Threshold to cut coef from its noise
+    """
+    norm_coef = np.abs(coef)
+    med = np.median(norm_coef)
+    sigma = med / 0.6745
+    T = sigma*np.sqrt(2*np.log(len(coef)))
+    
+    return T
+    
+thresholds = list(map(valeur_seuillage,coef))
+def cut(coef,threshold):
+    return coef[np.abs(coef)>threshold]
+def cut_2(coef,threshold):
+    return pywt.threshold(coef, threshold, mode='hard')
+coef_cut = list(map(cut,coef,thresholds))
+
+
+"""
 # print the range over which the wavelet will be evaluated
 print("Continuous wavelet will be evaluated over the range [{}, {}]".format(
     wav.lower_bound, wav.upper_bound))
@@ -78,3 +120,4 @@ axes[0, 0].legend(['real', 'imaginary'], loc='upper left')
 axes[0, 1].legend(['Power'], loc='upper left')
 axes[0, 0].set_title('filter')
 axes[0, 1].set_title(r'|FFT(filter)|$^2$')
+"""
