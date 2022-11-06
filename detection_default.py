@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import scipy.signal
 import sys
 import matplotlib.collections as collections
+from scipy.stats import norm
+from scipy.stats import  kurtosis
 
 #Suppression warning 
 import warnings
@@ -26,7 +28,7 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5, precision = 5, seuil = 0.5):
+    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5, precision = 5, seuil = 0.5,name: str = False):
         
         self.Fs = Fs #Fréquence d'échantillonage -> dépend de Fmaxi
         self.precision = precision #Précision de l'échantillonage du cepstre
@@ -45,17 +47,28 @@ class detection_default():
         ###Opening signal###
         
         if is_sig == True :
-            for i in range(0,nombre_signal):
-                signal = open(f'mesure01\Signal_{i}.sig','r')
-                Amplitude=[]
-                Temps=[]
-                for x in signal :
-                    sep=x.find('\t')
-                    Temps.append(float(x[:sep]))
-                    Amplitude.append(float(x[sep+1:-1]))
-                current_df=self.plot_signal(Temps,Amplitude,columns=['secondes','signal','num'],num=i,logy=False)
-                df=self.signal.append(current_df)
-                self.signal=df
+            if(not name): 
+                for i in range(0,nombre_signal):
+                    signal = open(f'mesure01\Signal_{i}.sig','r')
+                    Amplitude=[]
+                    Temps=[]
+                    for x in signal :
+                        sep=x.find('\t')
+                        Temps.append(float(x[:sep]))
+                        Amplitude.append(float(x[sep+1:-1]))
+                    current_df=self.plot_signal(Temps,Amplitude,columns=['secondes','signal','num'],num=i,logy=False)
+                    df=self.signal.append(current_df)
+                    self.signal=df
+            else: #Si un nom de signal en particulier est fourni
+                signal = pd.read_csv(name,sep=',')
+                assert len(signal.columns) == 2 , "Attention , le signal entrant au format csv est temporel constitué de deux colonnes [temps,signal] uniquement."
+                signal = signal.rename(columns={signal.columns[0]: "secondes", signal.columns[1]: "signal"})
+                signal['num'] = 0
+                self.signal = signal
+                self.t = signal['secondes'].to_numpy()
+                self.nombre_signal = 1
+                signal.plot(x='secondes', y = 'signal')
+
         else:
             for i in range(0,nombre_signal):
                 
@@ -123,7 +136,7 @@ class detection_default():
         
         
         self.df_sfM=self.plot_signal(self.t,sfM,columns=['seconde','signal_moyen'],logy=False)
-        self.df_sfM.to_excel('signal_temporel_filtré.xlsx')
+        self.df_sfM.to_csv('matlab/signal_temporel_filtre.csv')
         
         SF=self.fournier_transform(self.df_sfM['signal_moyen'])
         w,mag_fft= self.fournier_magnitude(SF)
@@ -135,12 +148,23 @@ class detection_default():
         
         return sfM
         
-    def enveloppe(self, x0 = None ,x1 = None , cepstrum = True):
+    def enveloppe(self, x0 = 7000 ,x1 = 10000 , cepstrum = True , signal = pd.DataFrame()):
         """
         Méthode de l'enveloppe
+            -signal = self.icwt_signal
         """
-        
-        sfM = self.filtrage(x0,x1)
+        if(len(signal) == 0) :
+            sfM = self.filtrage(x0,x1)
+        else :
+            #Cas où on analyse l'enveloppe du signal filtré par ondelette
+            sfM = signal['signal']
+            SF=self.fournier_transform(sfM)
+            w,mag_fft= self.fournier_magnitude(SF)
+            
+            #Plotting
+            columns=['frequence', 'Mag_fournier_transform']
+          
+            self.signal_mgnet_fft_filtered=self.plot_signal(w,mag_fft,columns,logy=True, title = "Transformée de Founier du signal temporel")
         #Hilbert
         H=self.hilbert_transform(sfM)
         
@@ -152,7 +176,7 @@ class detection_default():
         mag_fft_prime=self.envelop_signal[1:int(self.NFFT/2 + 2)]
         
         #Plotting signal
-        self.envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],logy=False)
+        self.envelop_signal=self.plot_signal(wprime,mag_fft_prime,columns=['fréquence (Hz)','Amplitude'],title = "enveloppe du signal", logy=False)
         #Analyse Cepstrale
         if cepstrum == True :
             self.cepstre(mag_fft_prime, wprime)
@@ -188,7 +212,7 @@ class detection_default():
         #Plotting
         columns=['quefrence', 'cepstre']
         
-        self.cepstrum=self.plot_signal(quefrency_vector,np.abs(cepstrum),columns,logy=False)
+        self.cepstrum=self.plot_signal(quefrency_vector,np.abs(cepstrum),columns,logy=False, title = "Cepstre du signal")
 
     def extract_pitch(self,quefrence_min,quefrence_max):
         """
@@ -207,7 +231,6 @@ class detection_default():
         quefrency_vector = self.cepstrum['quefrence'].to_numpy()
         
         fig, ax = plt.subplots()
-#        ax.vlines(0.0310, 0, np.max(np.abs(cepstrum)), alpha=.2, lw=3, label='expected peak')
         ax.plot(quefrency_vector, np.abs(cepstrum))
         valid = (quefrency_vector > quefrence_min) & (quefrency_vector <= quefrence_max)
         collection = collections.BrokenBarHCollection.span_where(
@@ -465,3 +488,104 @@ class detection_default():
         ax.set_title(title)
         return df
         
+    def continuous_wavelet(self,fmin,fmax):
+        import matlab.engine
+
+        eng = matlab.engine.start_matlab() #Start using matlab to compute icwt
+        fs = self.Fs
+
+        frequencies = np.array([8.333, 63.731, 31.865, 93.663, 72.964, 3.65, 4.683])  
+        
+        #Start the engine
+        eng.cd('matlab', nargout=1)
+        fs = matlab.double([fs])
+        name = 'signal_temporel_filtre.csv'
+        
+        fmin = matlab.double([fmin])
+        fmax = matlab.double([fmax])
+        icwt_signal = eng.cwt_process(fs,name,fmin,fmax)
+        self.icwt_signal = np.asarray(icwt_signal)
+        d = {'secondes': self.t, 'signal': self.icwt_signal[0]}
+        self.icwt_signal = pd.DataFrame(d)
+        self.icwt_signal.to_csv("icwt_signal.csv")
+        eng.quit()
+        #pd.DataFrame(self.t, np.asarray(icwt_signal) , columns = ["secondes","signal"])
+    def get_kurtosis(self,signal,discretisation_pace= 0.5):
+        """
+        - Get the kurtosis of a time signal by analysing its probability distribution
+        - Comes after cwt wavelet analysis , it can tell whether a frequency in the specter corresponds to a pulse or a sinusoidal signal.
+        More info on the thesis given by :
+            Mohamed EL BADAOUI
+            Ingénieur ISTASE
+            Contribution au Diagnostic Vibratoire des Réducteurs Complexes à
+            Engrenages par l’Analyse Cepstrale , 1999.
+            p50
+        - approximation of the distribution by a normal distribution: 
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.norm.html
+
+        Parameters
+        ----------
+        signal : signal to analyse , dataframe with two columns ['secondes','signal'] - Continuous distribution.
+        discretisation_pace : in % , correspond to the approx of the signal
+        Returns
+        -------
+        Kurtosis - whether it is a choc (defaut) or not.
+        
+        La valeur K du kurtosis dépend fortement de la forme des signaux. 
+        Par exemple :
+            K=1.5 pour une vibration de type sinusoïdal.
+            K=3 pour une vibration de type impulsionnel aléatoire.
+            K élevé pour une vibration de type impulsionnel périodique.
+        """
+        
+        signal.sort_values(by = 'signal')
+        signal['signal'].describe()
+        
+        # Get a Normal Distribution instance for our height data.
+        dist = norm(signal['signal'].mean(), signal['signal'].std())
+        #Discretisation of the signal
+        length = signal['signal'].max() - signal['signal'].min()
+        pace = length*(discretisation_pace/100)
+        signal['discrete'] = signal['signal'].apply(lambda x: (x//pace)*pace)
+        # x-axis: all height data points
+        # y-axis: probability for each individual data point. (calculated by pdf())
+        
+ 
+        #On crée l'historique à la main car la méthode hist de pandas n'est pas assez précise
+        hist = signal['discrete'].value_counts()
+        hist = hist.sort_index()
+        
+        #On crée la courbe de densité de probabilité réelle
+        prob = hist/len(signal)
+        
+        #Quelques tests#
+        #Est-ce une prob ?
+        # assert prob.sum() == 1 , "Ce n'est pas une probabilité"
+        
+        #Précis ?
+        prob = prob.reset_index()
+        prob = prob.rename(columns={"index": "Amplitude"})
+        prob['cdf'] = prob['discrete'].cumsum()
+        prob['cdf_approximé'] = dist.cdf(prob['Amplitude'])
+        assert np.allclose(prob['cdf'] , prob['cdf_approximé'],rtol = 0 , atol = 0.05) == True , "Approximation erronée à 5 %"
+        
+        #Affichage#
+        prob.plot(x ='Amplitude' ,y = ['cdf','cdf_approximé'],title = "CDF de l'approximation normale et du signal réel")
+        
+        # We consider the distribution is normal , plotting of the normal approximation
+        fig , ax = plt.subplots()
+        signal['approximation_normale'] = signal['signal'].apply(lambda x: dist.pdf(x))*pace
+        ax.plot(signal['signal'],signal['approximation_normale'],label='approximation normale continue')
+        ax.plot(prob['Amplitude'],prob['discrete'], label = 'probabilité discrétisée')
+        ax.legend()
+        ax.set_title("Densités de probabilité du signal")
+        
+        
+        #Compute kurtosis from normal approximation
+        K = kurtosis(signal['approximation_normale'])
+        if( K > 3) :
+            print("Signal impulsif de kurtosis %f: c'est un défaut" %K)
+            return True
+        else :
+            print("Signal non impulsif de kurtosis %f : ce n'est pas un défaut" %K)
+            return False
