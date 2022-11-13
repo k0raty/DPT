@@ -1,5 +1,6 @@
 
 function icwt_signal = cwt_tranform(fs,name,fmin,fmax)
+
     %{
     Transformée en ondelette continue.
     fs: fréquence d'échantillonage
@@ -13,7 +14,7 @@ function icwt_signal = cwt_tranform(fs,name,fmin,fmax)
     
     disp(class(fs))
     T = readtable(name);
-    signal = T(:,"signal_moyen");
+    signal = T(:,"signal");
     t = T(:,"seconde");
     signal = table2array(signal);
     t = table2array(t);

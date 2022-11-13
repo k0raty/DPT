@@ -14,6 +14,8 @@ import scipy.signal
 import sys
 import matplotlib.collections as collections
 from scipy.stats import norm
+from scipy.stats import laplace
+from scipy.stats import skew
 from scipy.stats import  kurtosis
 
 #Suppression warning 
@@ -28,7 +30,7 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self,is_sig= True, Fs = 50000*2, duree = 10,nombre_signal=5, precision = 5, seuil = 0.5,name: str = False):
+    def __init__(self,is_sig= True, Fs = 100000, duree = 10,nombre_signal=5, precision = 5, seuil = 1,name: str = False):
         
         self.Fs = Fs #Fréquence d'échantillonage -> dépend de Fmaxi
         self.precision = precision #Précision de l'échantillonage du cepstre
@@ -49,7 +51,7 @@ class detection_default():
         if is_sig == True :
             if(not name): 
                 for i in range(0,nombre_signal):
-                    signal = open(f'mesure01\Signal_{i}.sig','r')
+                    signal = open(f'DR\Signal_{i}.sig','r')
                     Amplitude=[]
                     Temps=[]
                     for x in signal :
@@ -60,7 +62,7 @@ class detection_default():
                     df=self.signal.append(current_df)
                     self.signal=df
             else: #Si un nom de signal en particulier est fourni
-                signal = pd.read_csv(name,sep=',')
+                signal = pd.read_csv(name,sep=',',index_col=0)
                 assert len(signal.columns) == 2 , "Attention , le signal entrant au format csv est temporel constitué de deux colonnes [temps,signal] uniquement."
                 signal = signal.rename(columns={signal.columns[0]: "secondes", signal.columns[1]: "signal"})
                 signal['num'] = 0
@@ -113,38 +115,36 @@ class detection_default():
         print('Tapez la valeur de F1 et de F2 dans la méthode method_envelop_2')
             # Display grid
         #2nd step   
-    def filtrage(self,x0,x1):
+    def filtrage(self,x0,x1,signal = pd.DataFrame()):
         
         """
         Transformée de fournier des signaux selon le filtrage nécessaire.
         Utile pour n'importe quelle méthode
         """
-        if (x0== None) | (x1 == None): #Pas de filtrage mais moyenne tout de même
-            return self.signal_mgnet_fft
         
         b,a=self.pass_band_filter(x0, x1)
-        sf_list=[]
-        
-        #sf signals
-        for i in range(0,self.nombre_signal):
-            signal=self.signal['signal'][self.signal['num']==i]
-            sf=scipy.signal.lfilter(b, a, signal)
-            sf_list.append(sf)
+
+        if len(signal) == 0: #Pas de filtrage mais moyenne tout de même
             
-        #Signal_moyen
-        sfM=self.mean_SM(sf_list)
         
-        
-        self.df_sfM=self.plot_signal(self.t,sfM,columns=['seconde','signal_moyen'],logy=False)
-        self.df_sfM.to_csv('matlab/signal_temporel_filtre.csv')
-        
-        SF=self.fournier_transform(self.df_sfM['signal_moyen'])
-        w,mag_fft= self.fournier_magnitude(SF)
-        
-        #Plotting
-        columns=['frequence', 'Mag_fournier_transform']
-      
-        self.signal_mgnet_fft_filtered=self.plot_signal(w,mag_fft,columns,logy=True)
+            sf_list=[]
+            
+            #sf signals
+            for i in range(0,self.nombre_signal):
+                signal=self.signal['signal'][self.signal['num']==i]
+                sf=scipy.signal.lfilter(b, a, signal)
+                sf_list.append(sf)
+                
+            #Signal_moyen
+            sfM=self.mean_SM(sf_list)
+            
+            self.df_sfM=self.plot_signal(self.t,sfM,columns=['seconde','signal_moyen'],logy=False)
+            
+            sfM = pd.DataFrame(sfM, columns = ["signal"])
+
+        else :
+            sfM = pd.DataFrame(signal['signal'], columns = ["signal"])
+
         
         return sfM
         
@@ -153,22 +153,40 @@ class detection_default():
         Méthode de l'enveloppe
             -signal = self.icwt_signal
         """
-        if(len(signal) == 0) :
-            sfM = self.filtrage(x0,x1)
-        else :
+        
+        if len(signal) == 0:
+            sfM = self.filtrage(x0,x1 ,signal = signal)
+            
             #Cas où on analyse l'enveloppe du signal filtré par ondelette
-            sfM = signal['signal']
-            SF=self.fournier_transform(sfM)
+            #On zoom sur les fréquences concernées - pas besoin d'effectuer un second filtrage.
+            
+            #Affichage temporel du signal
+            fig,ax = plt.subplots()
+            ax.plot(self.t,sfM['signal'])
+            ax.set_title("Profil du signal temporel à analyser")
+            
+            
+            SF=self.fournier_transform(sfM['signal'])
             w,mag_fft= self.fournier_magnitude(SF)
+            
             
             #Plotting
             columns=['frequence', 'Mag_fournier_transform']
-          
+            #Ici on remarque bien que la transformée conserve globalement les fréquences visées sur une précision de 20Hz.
             self.signal_mgnet_fft_filtered=self.plot_signal(w,mag_fft,columns,logy=True, title = "Transformée de Founier du signal temporel")
-        #Hilbert
-        H=self.hilbert_transform(sfM)
+            #Hilbert
+            H=self.hilbert_transform(sfM['signal'])
+            
+            self.Hilbert_transform=self.plot_signal(self.t,H,columns=['seconde','signal'],logy=False,title = "Transformée de Hilbert")
+            #Ondelette sur la transformée de hilbert ? -> Oui ! Voir la diff en prenant la valeur abs du signal retourné.
+            self.Hilbert_transform.to_csv('matlab/signal_temporel_filtre.csv')
         
-        self.Hilbert_transform=self.plot_signal(self.t,H,columns=['seconde','amplitude'],logy=False,title = "Transformée de Hilbert")
+        else : 
+            H = signal['signal'].to_numpy()
+            #Affichage temporel du signal
+            fig,ax = plt.subplots()
+            ax.plot(self.t,H)
+            ax.set_title("Profil du signal temporel à analyser")
 
         self.envelop_signal=abs(fft(H,self.NFFT))
         wprime=np.arange(1,self.NFFT/2+2,1)/(self.NFFT/2 +1)*(self.Fs/2)#Commence à 1 ici
@@ -189,7 +207,7 @@ class detection_default():
         Met en évidence les composantes périodiques d’un spectre - Utilisation en complément d’autres techniques
         - Permet de localiser et déterminer l’origine des défauts induisant des chocs périodiques
         - Interprétation de spectres complexes
-        
+        - Les quéfrences caratéristiques de fonctionnement du roulement réapparâissent après ondelette.
         Le cepstre C est la transform´ee de Fourier appliqu´ee au logarithme de la transform
         ´ee de Fourier d’une variable x(t) (2.22). Le r´esultat s’exprime selon une variable
         uniforme au temps : les qu´efrences q. La transform´ee de Fourier d’un signal permet
@@ -332,7 +350,7 @@ class detection_default():
         df = df[df['is_default'] == True]
         limit = self.keep_outlier(self.cepstrum[self.cepstrum['quefrence']>1/df['Hz'].iloc[-1]],'cepstre') #On ne conserve que les quéfrences au dessus d'un certains seuil
         limit = limit.sort_values(by='cepstre')['cepstre'].iloc[0]
-        df = df[df['cepstre']>limit]
+        #df = df[df['cepstre']>limit]
         df = df.filter(['Hz','f0'])
         
         self.defauts = df
@@ -351,7 +369,7 @@ class detection_default():
                 intr_qr = q75-q25
                 max = q75+(1.5*intr_qr)
                 filter = (df[column] >= max) 
-                if(len(df[filter]) > 0):
+                if(len(df[filter]) > 1):
                     df=df[filter]
                 else :
                     break
@@ -489,6 +507,7 @@ class detection_default():
         return df
         
     def continuous_wavelet(self,fmin,fmax):
+        #Une précision de 1 à 10 Hz ne change pas grand chose.
         import matlab.engine
 
         eng = matlab.engine.start_matlab() #Start using matlab to compute icwt
@@ -508,8 +527,117 @@ class detection_default():
         d = {'secondes': self.t, 'signal': self.icwt_signal[0]}
         self.icwt_signal = pd.DataFrame(d)
         self.icwt_signal.to_csv("icwt_signal.csv")
+        plt.show()
         eng.quit()
         #pd.DataFrame(self.t, np.asarray(icwt_signal) , columns = ["secondes","signal"])
+        
+    def spectral_kurtosis(self,fmin,fmax):
+        
+        assert len(self.envelop_signal) >0 , "Il faut avoir un signal enveloppe !"
+        enveloppe = self.envelop_signal
+        enveloppe=enveloppe[enveloppe['fréquence (Hz)']>fmin]
+        enveloppe=enveloppe[enveloppe['fréquence (Hz)']<fmax]
+
+        mean = enveloppe['fréquence (Hz)'][enveloppe['Amplitude'] == enveloppe['Amplitude'].max()].iloc[0]
+        
+        #Aperçu des fréquences évaluées :
+        enveloppe.plot(x ='fréquence (Hz)' ,y = "Amplitude",title = "Zoom sur le spectre centré en %f"%mean, kind = 'bar')
+        
+        enveloppe['next_value'] = enveloppe['Amplitude'].shift(periods = -1, fill_value = 0) #Décale la colonne des Hz vers le haut et arrondi par excés
+        enveloppe['previous_value'] = enveloppe['Amplitude'].shift(periods = 1, fill_value = 0) #Décale la colonne des Hz vers le haut et arrondi par excés
+        
+        m = []
+        M = []
+        enveloppe['is_ok'] = enveloppe.apply(lambda x: self.is_ok(M,m,mean,x['fréquence (Hz)'],x['Amplitude'],x['next_value'],x['previous_value']),axis = 1)
+        enveloppe['deviation'] = enveloppe.apply(lambda x: x['Amplitude']*(x['fréquence (Hz)'] - mean)**2,axis =1)
+        enveloppe['deviation_scale'] = enveloppe.apply(lambda x: x['Amplitude']*abs((x['fréquence (Hz)'] - mean)),axis =1)
+        
+        #On retire les pics qui empêcherai de calculer correctement le kurtosis
+        enveloppe = enveloppe[enveloppe['is_ok'] == True]
+        enveloppe.plot(x ='fréquence (Hz)' ,y = "Amplitude",title = "Zoom sur le spectre arrangé en %f"%mean, kind= 'bar')
+
+        b = 1/sum(enveloppe['Amplitude'])*sum(enveloppe['deviation_scale'])
+        
+        #Distribution laplacienne
+        dist = laplace(mean,b)
+        hist = enveloppe['Amplitude']
+        
+        
+        #On crée la courbe de densité de probabilité réelle
+        prob = pd.DataFrame(hist/sum(enveloppe['Amplitude']) , columns = ['Amplitude'])
+        prob['fréquence (Hz)'] = enveloppe['fréquence (Hz)']
+        
+        #Quelques tests#
+        #Est-ce une prob ?
+        # assert prob.sum() == 1 , "Ce n'est pas une probabilité"
+        
+        #Précis ?
+
+        prob['cdf'] = prob['Amplitude'].cumsum()
+        prob['cdf_approximé'] = dist.cdf(prob['fréquence (Hz)'])
+    #    assert np.allclose(prob['cdf'] , prob['cdf_approximé'],rtol = 0 , atol = 0.05) == True , "Approximation erronée à 5 %"
+        
+        #Affichage#
+        prob.plot(x ='fréquence (Hz)' ,y = ['cdf','cdf_approximé'],title = "CDF de l'approximation normale et du signal réel")
+        
+        # We consider the distribution is normal , plotting of the normal approximation
+        fig , ax = plt.subplots()
+        
+        enveloppe['approximation_normale'] = enveloppe['fréquence (Hz)'].apply(lambda x: dist.pdf(x))
+        
+        #Remise à échelle :
+        pace = 1/sum(enveloppe['approximation_normale'])
+        M= np.arange(fmin,fmax,0.01)
+        distribution = dist.pdf(M)*pace
+        
+        #Affichage
+        ax.plot(M,distribution,label='approximation normale continue')
+        ax.plot(prob['fréquence (Hz)'],prob['Amplitude'], label = 'probabilité discrétisée')
+        ax.legend()
+        ax.set_title("Densités de probabilité du signal")
+        
+        #Evaluation du kurtosis
+        data = dist.rvs(size=1000000) #Big size to get the decrease random influence.
+        K = kurtosis(data, fisher=True)
+        Sk = skew(data)
+        print(Sk)
+        if( K > 2.5) :
+            print("Signal impulsif de kurtosis %f: c'est un défaut" %K)
+            return True
+        else :
+            print("Signal non impulsif de kurtosis %f : ce n'est pas un défaut" %K)
+            return False
+        
+    def is_ok(self,M,m,mean,current_fq,current_amp,next_amp,previous_amp):
+        
+        if (current_fq< mean):
+            if (current_amp < next_amp):
+                if (len(M) > 0): 
+                    if (current_amp > max(M)):
+                        M.append(current_amp)
+                        return True
+                    else : return False
+                else :
+                    M.append(current_amp)
+                    return True
+            else :
+                return False
+            
+        elif (current_fq > mean):
+            if (previous_amp > current_amp):
+                if (len(m) > 0): 
+                    if (current_amp < min(m)):
+                        m.append(current_amp)
+                        return True
+                    else : return False
+                else :
+                    m.append(current_amp)
+                    return True
+            else :
+                return False
+        elif (current_fq == mean):
+            return True
+        
     def get_kurtosis(self,signal,discretisation_pace= 0.5):
         """
         - Get the kurtosis of a time signal by analysing its probability distribution
@@ -537,21 +665,23 @@ class detection_default():
             K=3 pour une vibration de type impulsionnel aléatoire.
             K élevé pour une vibration de type impulsionnel périodique.
         """
-        
+        #Discretisation of the signal
+
+        length = signal['signal'].max() - signal['signal'].min()
+        pace = length*(discretisation_pace/100)
         signal.sort_values(by = 'signal')
         signal['signal'].describe()
         
         # Get a Normal Distribution instance for our height data.
         dist = norm(signal['signal'].mean(), signal['signal'].std())
-        #Discretisation of the signal
-        length = signal['signal'].max() - signal['signal'].min()
-        pace = length*(discretisation_pace/100)
+        
         signal['discrete'] = signal['signal'].apply(lambda x: (x//pace)*pace)
+
         # x-axis: all height data points
         # y-axis: probability for each individual data point. (calculated by pdf())
         
  
-        #On crée l'historique à la main car la méthode hist de pandas n'est pas assez précise
+        #On crée l'histogramme à la main car la méthode hist de pandas n'est pas assez précise
         hist = signal['discrete'].value_counts()
         hist = hist.sort_index()
         
