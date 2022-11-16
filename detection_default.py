@@ -51,7 +51,7 @@ class detection_default():
         if is_sig == True :
             if(not name): 
                 for i in range(0,nombre_signal):
-                    signal = open(f'DR\Signal_{i}.sig','r')
+                    signal = open(f'BE\Signal_{i}.sig','r')
                     Amplitude=[]
                     Temps=[]
                     for x in signal :
@@ -531,7 +531,7 @@ class detection_default():
         eng.quit()
         #pd.DataFrame(self.t, np.asarray(icwt_signal) , columns = ["secondes","signal"])
         
-    def spectral_kurtosis(self,fmin,fmax):
+    def spectral_kurtosis(self,fmin,fmax,atol = 0.1):
         
         assert len(self.envelop_signal) >0 , "Il faut avoir un signal enveloppe !"
         enveloppe = self.envelop_signal
@@ -549,11 +549,14 @@ class detection_default():
         m = []
         M = []
         enveloppe['is_ok'] = enveloppe.apply(lambda x: self.is_ok(M,m,mean,x['fréquence (Hz)'],x['Amplitude'],x['next_value'],x['previous_value']),axis = 1)
-        enveloppe['deviation'] = enveloppe.apply(lambda x: x['Amplitude']*(x['fréquence (Hz)'] - mean)**2,axis =1)
-        enveloppe['deviation_scale'] = enveloppe.apply(lambda x: x['Amplitude']*abs((x['fréquence (Hz)'] - mean)),axis =1)
         
         #On retire les pics qui empêcherai de calculer correctement le kurtosis
         enveloppe = enveloppe[enveloppe['is_ok'] == True]
+
+        mid = enveloppe['fréquence (Hz)'][enveloppe['Amplitude'] > enveloppe['Amplitude'].mean()].iloc[0]
+        enveloppe['deviation'] = enveloppe.apply(lambda x: x['Amplitude']*(x['fréquence (Hz)'] - mean)**2,axis =1)
+        enveloppe['deviation_scale'] = enveloppe.apply(lambda x: x['Amplitude']*abs((x['fréquence (Hz)'] - mid)),axis =1)
+        
         enveloppe.plot(x ='fréquence (Hz)' ,y = "Amplitude",title = "Zoom sur le spectre arrangé en %f"%mean, kind= 'bar')
 
         b = 1/sum(enveloppe['Amplitude'])*sum(enveloppe['deviation_scale'])
@@ -575,7 +578,7 @@ class detection_default():
 
         prob['cdf'] = prob['Amplitude'].cumsum()
         prob['cdf_approximé'] = dist.cdf(prob['fréquence (Hz)'])
-    #    assert np.allclose(prob['cdf'] , prob['cdf_approximé'],rtol = 0 , atol = 0.05) == True , "Approximation erronée à 5 %"
+        assert np.allclose(prob['cdf'] , prob['cdf_approximé'],rtol = 0 , atol = atol) == True , "Approximation erronée à 5 %"
         
         #Affichage#
         prob.plot(x ='fréquence (Hz)' ,y = ['cdf','cdf_approximé'],title = "CDF de l'approximation normale et du signal réel")
