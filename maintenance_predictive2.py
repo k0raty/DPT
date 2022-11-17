@@ -46,6 +46,8 @@ class frame():
         self.varF4 = tk.IntVar()
         self.varF5 = tk.IntVar()
         self.varF6 = tk.IntVar()
+        self.varNorm = tk.IntVar()
+        self.varLaplace = tk.IntVar()
         self.bool = False
 
 
@@ -65,20 +67,23 @@ class frame():
 
         self.radio_widget_meth1 = tk.Button(
             self.method_frame, text="Analyse", command = self.show_next_window)
-     
+        
+        self.SeuilFrame = tk.LabelFrame(self.app, text="Entrez la valeur des seuils Norme et Laplace")
+        self.SeuilFrame.pack(fill="x")
+        
+        self.fNorm = tk.Entry(self.SeuilFrame, textvariable=self.varNorm)
+        self.fLaplace = tk.Entry(self.SeuilFrame, textvariable=self.varLaplace)
+        
+        self.fNorm.pack()
+        self.fLaplace.pack()
         self.radio_widget_MacOS.pack()
         self.radio_widget_Windows.pack()
         self.radio_widget_Linux.pack()
-
         self.nbre_acquis.pack()
-
         self.radio_widget_meth1.pack()
-   
-
         self.scale_w.pack()
-
         self.quit_button.place(x=10, y=440)
-
+        
         self.app.mainloop()
                
 
@@ -89,10 +94,7 @@ class frame():
         messagebox.showerror("ERREUR", "Un problème est survenu !")
 
     def show_next_window(self):
-        if(self.varOS.get() == 0):
-            return self.show_error_window()
-        if(self.varOS.get() == 2):
-            return self.show_error_window()
+
         return self.methode1()
        
     def bar(self):
@@ -129,29 +131,40 @@ class frame():
         self.OSframe.pack(fill="x")
         if self.bool == False:
             return self.show_error_window()
+        
         print(self.varF1.get(), self.varF2.get())
         self.analyse_data.enveloppe(self.varF1.get(), self.varF2.get())
         plt.show() ##IMPORTANT !
+        print("ok")
+        
+        defaut_button = tk.Button(self.next_window, text="Detection défauts", command = self.default)
+        defaut_button.pack()
         
         self.Oframe = tk.LabelFrame(self.next_window, text="Sélectionner les fréquences f1 et f2 (Hz) --> Ondelette")
         self.Oframe.pack(fill="x")
         f3 = tk.Entry(self.Oframe, textvariable=self.varF3)
         f4 = tk.Entry(self.Oframe, textvariable=self.varF4)
-        Obutton = tk.Button(self.Oframe, text = "Ondelette")
+        Obutton = tk.Button(self.Oframe, text = "Ondelette", command = self.onde_)
         Obutton.pack(side = 'bottom')
         f3.pack()
         f4.pack()
+        
+      
         
         self.Kframe = tk.LabelFrame(self.next_window, text="Sélectionner les fréquences f1 et f2 (Hz) --> Kurtosis")
         self.Kframe.pack(fill="x")
         f5 = tk.Entry(self.Kframe, textvariable=self.varF5)
         f6 = tk.Entry(self.Kframe, textvariable=self.varF6)
-        Kbutton = tk.Button(self.Kframe, text = "Kurtosis")
+        Kbutton = tk.Button(self.Kframe, text = "Kurtosis", command = self.kurto_)
         Kbutton.pack(side = 'bottom')
         f5.pack()
         f6.pack()
         
+    def kurto_(self):
+        self.analyse_data.spectral_kurtosis(self.varF5.get(), self.varF6.get())
         
+    def onde_(self):
+        self.analyse_data.continuous_wavelet(self.varF3.get(), self.varF4.get())
         
     def methode1(self):
         self.next_window = tk.Toplevel(self.app)
@@ -176,15 +189,17 @@ class frame():
 
         f1 = tk.Entry(freq_frame, textvariable=self.varF1)
         f2 = tk.Entry(freq_frame, textvariable=self.varF2)
-
         
         f1.pack()
         f2.pack()
 
         continue2_button = tk.Button(self.next_window, text="Détection enveloppe", command=self.suite_analyse)
-        defaut_button = tk.Button(self.next_window, text="Detection défauts", command = self.tableau)
         continue2_button.pack()
-        defaut_button.pack()
+        
+    def default(self):
+        self.analyse_data.detect_default()
+        
+            
 
     def tableau(self):
         root = tk.Tk()

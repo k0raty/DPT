@@ -322,6 +322,8 @@ class detection_default():
         
     def detect_default(self,with_ondelette = False):
         
+        
+        
         assert len(self.cepstrum)>0, "Veuillez d'abord calculer le cepstre !"
         
         df=self.table_defaut.copy()
