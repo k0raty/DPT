@@ -42,6 +42,11 @@ class frame():
         self.varNbreAcquis = tk.IntVar()
         self.varF1 = tk.IntVar()
         self.varF2 = tk.IntVar()
+        self.varF3 = tk.IntVar()
+        self.varF4 = tk.IntVar()
+        self.varF5 = tk.IntVar()
+        self.varF6 = tk.IntVar()
+        self.bool = False
 
 
         self.radio_widget_MacOS = tk.Radiobutton(
@@ -61,7 +66,6 @@ class frame():
         self.radio_widget_meth1 = tk.Button(
             self.method_frame, text="Analyse", command = self.show_next_window)
      
-
         self.radio_widget_MacOS.pack()
         self.radio_widget_Windows.pack()
         self.radio_widget_Linux.pack()
@@ -76,6 +80,7 @@ class frame():
         self.quit_button.place(x=10, y=440)
 
         self.app.mainloop()
+               
 
     def fQuit(self):
         return self.app.destroy()
@@ -92,9 +97,10 @@ class frame():
        
     def bar(self):
       
+        self.bool = True
         labelAcq = tk.Label(self.next_window, text="Patientez")
         labelAcq.place(x = 360, y = 35)
-        for acquisition in range(self.varNbreAcquis.get()):
+        """for acquisition in range(self.varNbreAcquis.get()):
 
             self.my_progress['value'] = (
                 acquisition/self.varNbreAcquis.get())*100
@@ -102,7 +108,7 @@ class frame():
             time.sleep((self.varTime.get()))
 
     
-        self.my_progress['value'] = 100
+        self.my_progress['value'] = 100"""
         labelTerm = tk.Label(self.next_window, text="Terminé !")
         labelTerm.place(x = 360, y = 35)
         #get_data = acquisition_signal_capteur(
@@ -119,8 +125,34 @@ class frame():
 
 
     def suite_analyse(self):
+        self.OSframe = tk.LabelFrame(self.next_window, text="Système d'exploitation")
+        self.OSframe.pack(fill="x")
+        if self.bool == False:
+            return self.show_error_window()
+        print(self.varF1.get(), self.varF2.get())
         self.analyse_data.enveloppe(self.varF1.get(), self.varF2.get())
         plt.show() ##IMPORTANT !
+        
+        self.Oframe = tk.LabelFrame(self.next_window, text="Sélectionner les fréquences f1 et f2 (Hz) --> Ondelette")
+        self.Oframe.pack(fill="x")
+        f3 = tk.Entry(self.Oframe, textvariable=self.varF3)
+        f4 = tk.Entry(self.Oframe, textvariable=self.varF4)
+        Obutton = tk.Button(self.Oframe, text = "Ondelette")
+        Obutton.pack(side = 'bottom')
+        f3.pack()
+        f4.pack()
+        
+        self.Kframe = tk.LabelFrame(self.next_window, text="Sélectionner les fréquences f1 et f2 (Hz) --> Kurtosis")
+        self.Kframe.pack(fill="x")
+        f5 = tk.Entry(self.Kframe, textvariable=self.varF5)
+        f6 = tk.Entry(self.Kframe, textvariable=self.varF6)
+        Kbutton = tk.Button(self.Kframe, text = "Kurtosis")
+        Kbutton.pack(side = 'bottom')
+        f5.pack()
+        f6.pack()
+        
+        
+        
     def methode1(self):
         self.next_window = tk.Toplevel(self.app)
         self.next_window.geometry("560x480")
