@@ -31,7 +31,7 @@ class detection_default():
     t = (1:Fs*Duree)/Fs; % Echelle des temps
     """
     
-    def __init__(self,is_sig= True, Fs = 100000, duree = 10,nombre_signal=5, precision = 5, seuil = 1,name: str = False):
+    def __init__(self,is_sig= True, Fs = 100000, duree = 10,nombre_signal=5, precision = 5, seuil = 1,name: str = False,seuil_norm=0,seuil_laplace =0):
         
         self.Fs = Fs #Fréquence d'échantillonage -> dépend de Fmaxi
         self.precision = precision #Précision de l'échantillonage du cepstre
@@ -45,14 +45,15 @@ class detection_default():
         self.signal=pd.DataFrame(columns=['secondes','signal','num'])
         self.signal_mgnet_fft=pd.DataFrame(columns=['frequence','Mag_fournier_transform','num'])
         self.signal_mgnet_fft_filtered=pd.DataFrame(columns=['frequence','Mag_fournier_transform'])
-
+        self.seuil_norm = seuil_norm
+        self.seuil_laplace = seuil_laplace
         
         ###Opening signal###
         
         if is_sig == True :
             if(not name): 
                 for i in range(0,nombre_signal):
-                    signal = open(f'BE\Signal_{i}.sig','r')
+                    signal = open(f'mesure01\Signal_{i}.sig','r')
                     Amplitude=[]
                     Temps=[]
                     for x in signal :
@@ -75,7 +76,7 @@ class detection_default():
         else:
             for i in range(0,nombre_signal):
                 
-                current_df = pd.read_csv(f'Signal_{i}.csv', sep=',')
+                current_df = pd.read_csv('500g/Signal_%d.csv'%i, sep=',')
                 current_df = current_df[['0','1']]
                 current_df = current_df.rename(columns={"0": "secondes", "1": "signal"})
                 current_df['num'] = i
@@ -299,11 +300,11 @@ class detection_default():
         
         fig, ax = plt.subplots(1, 1,figsize=(20,10))
         
-        df['pics'] = df.apply(lambda x : self.envelop_signal['Amplitude'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
-        df['f_pics'] = df.apply(lambda x : self.envelop_signal['fréquence (Hz)'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
+        df['pics'] = df.apply(lambda x : self.envelop_signal['Amplitude'][self.envelop_signal['fréquence (Hz)'] == x['f_pic']].iloc[0], axis =1)
+        #df['f_pics'] = df.apply(lambda x : self.envelop_signal['fréquence (Hz)'].loc[self.find_neighbours(x['f0'], self.envelop_signal, 'fréquence (Hz)')],axis = 1 )
         self.envelop_signal.plot(x= 'fréquence (Hz)', y = 'Amplitude' , ax = ax, label = "Spectre démodulé")
         
-        df.plot(x = 'f0' , y = 'pics', kind = 'scatter', marker='X', ax = ax ,c = 'red', label ="Défauts détectés")
+        df.plot(x = 'f_pic' , y = 'pics', kind = 'scatter', marker='X', ax = ax ,c = 'red', label ="Défauts détectés")
     
     def find_neighbours(self,value, df, colname):
         """
@@ -330,7 +331,7 @@ class detection_default():
             neighbour = np.argmin([abs(df['fréquence (Hz)'].loc[lowerneighbour_ind]-value), abs(df['fréquence (Hz)'].loc[upperneighbour_ind]-value)])
         return neighbours[neighbour]
         
-    def detect_default(self,with_ondelette = False):
+    def detect_default(self,with_ondelette = False,atol = 0.15):
         
         assert len(self.cepstrum)>0, "Veuillez d'abord calculer le cepstre !"
         
@@ -353,6 +354,7 @@ class detection_default():
         limit = limit.sort_values(by='cepstre')['cepstre'].iloc[0]
         df = df[df['cepstre']>limit]
         df = df.filter(['Hz','f0'])
+        df['f_pic'] = np.nan
         
         print("Voici les défauts supposés : \n")
         print(df)
@@ -362,20 +364,55 @@ class detection_default():
         if (len(defauts)==0):
             return "Il n'y a pas de défauts"
         
+       
+        
+        d = {}
         for index_defaut in tqdm(range(0,len(defauts))) :
             defaut = defauts.iloc[index_defaut]
             if (with_ondelette == True):
                 self.continuous_wavelet(defaut-5,defaut+5)
                 self.enveloppe(signal = self.icwt_signal)
-            is_defaut = self.spectral_kurtosis(defaut-0.5, defaut+0.5)
-            if (is_defaut == False):
+            kappa,f_pic = self.spectral_kurtosis(defaut-0.8, defaut+0.8,atol = atol)
+            
+            if (kappa == False):
                 print('Ce défaut est annulé :',defauts.index[index_defaut])
                 df = df.drop(index = defauts.index[index_defaut])
+            else :
+                df.loc[defauts.index[index_defaut]]['f_pic'] = f_pic
+                print("Ajout du kappa en cours")
+                d[defauts.index[index_defaut]] = kappa
         self.defauts = df
-
+        
+        #Ouverture des kappa enregistrés au cas où#
+        try:
+            df_kappa = pd.read_excel('Kappa.xlsx')
+            df_kappa = df_kappa[df_kappa.columns[1:]] #On retire la colonne unamed
+            df_kappa = df_kappa.append(d)
+        except : df_kappa = pd.DataFrame(data = d, index = np.arange(1,len(d)))
+        
+        df.to_excel('Défauts.xlsx')
+        df_kappa.to_excel("Kappa.xlsx")
+        
         self.highlight_pics(df)
         return df
+    
+    def display_curvature(self):
+        try:
+            df_kappa = pd.read_excel('Kappa.xlsx')
+            df_kappa = df_kappa[df_kappa.columns[1:]] #On retire la colonne unamed
+
+        except : return "Veuillez enregistrer les courbures sous le nom de Kappa.xlsx"
         
+        x = np.arange(0,len(df_kappa))
+        
+        for i in df_kappa.columns :
+            print(df_kappa[i].to_numpy())
+            plt.plot(x , df_kappa[i].to_numpy(),label =i)
+            plt.title("Affichage des kurtosis")
+        plt.legend()
+        plt.show()
+
+            
     def keep_outlier(self,df, column,m=1):
         n=0
         while n<m : #On ne conserve que les véritables outliers.
@@ -550,7 +587,7 @@ class detection_default():
         eng.quit()
         #pd.DataFrame(self.t, np.asarray(icwt_signal) , columns = ["secondes","signal"])
         
-    def spectral_kurtosis(self,fmin,fmax,atol = 0.07,seuil_laplace = 10e-7,seuil_norm =50000, envelop_signal = pd.DataFrame()):
+    def spectral_kurtosis(self,fmin,fmax,atol = 0.07,seuil_laplace = 10e-9,seuil_norm =50000, envelop_signal = pd.DataFrame()):
         """
         curvature of a function : https://tutorial.math.lamar.edu/classes/calciii/curvature.aspx
         """
@@ -566,6 +603,7 @@ class detection_default():
         del(enveloppe_to_focus)
         enveloppe=enveloppe[enveloppe['fréquence (Hz)']>pic-0.5]
         enveloppe=enveloppe[enveloppe['fréquence (Hz)']<pic+0.5]
+        if (len(enveloppe) < 3): return False , pic
 
         #Aperçu des fréquences évaluées :
         enveloppe.plot(x ='fréquence (Hz)' ,y = "Amplitude",title = "Zoom sur le spectre centré en %f"%pic, kind = 'bar')
@@ -607,7 +645,7 @@ class detection_default():
         #On centre sur la valeur principal si il y a plus de 4 valeurs :
 
         #On identifie ses voisins
-        if len(enveloppe) > 4:
+        if len(enveloppe) >= 4:
             length_inf = len(enveloppe.index[:current_index])
             length_sup = len(enveloppe.index[current_index+1:])
             length = abs(length_sup-length_inf)
@@ -619,6 +657,7 @@ class detection_default():
                 
             assert len(enveloppe) >=3, "ce n'est pas un pic"
         
+
         enveloppe['mean'] = enveloppe.apply(lambda x:x['Amplitude']*x['fréquence (Hz)'],axis =1) #Le poids de chaque 
 
         mean = sum(enveloppe['mean'])/sum(enveloppe['Amplitude'])
@@ -715,20 +754,28 @@ class detection_default():
             distribution_norm += -ecart
         except : 
             print("Ce n'est pas un pic")
-            return False
+            return False , pic
         
         
         if (np.allclose(distribution , prob['Amplitude'],rtol = 0 , atol = atol) == False and np.allclose(distribution_norm , prob['Amplitude'],rtol = 0 , atol = atol) == False): #Appel récursif
             print("Approximation erronée à %f "%(atol*100) +'%')
-            if (len(enveloppe) == 5) : #Il peut arriver que la fréquence de juste à côté soit quasiment au même niveau que le pic , on la retire.
+            
+            if (len(enveloppe) <= 5) : #Il peut arriver que la fréquence de juste à côté soit quasiment au même niveau que le pic , on la retire.
                 thresh = enveloppe['Amplitude'].max()
                 envelop_signal = enveloppe[enveloppe['Amplitude'] < thresh/2]
                 envelop_signal=envelop_signal.append(enveloppe[enveloppe['Amplitude'] == thresh])
                 envelop_signal=envelop_signal.sort_values(by = ['fréquence (Hz)'])
+                if (len(envelop_signal) == len(enveloppe)) :
+                    return False , pic
+            #Harmoniser la difference entre les pics quand il n'y en a plus assez
+            
             else : envelop_signal = enveloppe.iloc[1:-1]
-            if (len(envelop_signal) < 3):
-                print("Ce n'est pas un pic")
-                return False
+            
+            if (len(envelop_signal) == 3):
+                diff_fr = min(abs(envelop_signal['fréquence (Hz)'].iloc[0] - envelop_signal['fréquence (Hz)'].iloc[1]), abs(envelop_signal['fréquence (Hz)'].iloc[2] - envelop_signal['fréquence (Hz)'].iloc[1]))
+                envelop_signal['fréquence (Hz)'].iloc[0] = envelop_signal['fréquence (Hz)'].iloc[1] - diff_fr
+                envelop_signal['fréquence (Hz)'].iloc[2] = envelop_signal['fréquence (Hz)'].iloc[1] + diff_fr
+            if (len(enveloppe) < 3): return False , pic
             return self.spectral_kurtosis(fmin,fmax,atol,envelop_signal = envelop_signal )
         else :
             #Evaluation de la courbure / kurtosis :f''/((1+f'**2)**(3/2))
@@ -741,22 +788,22 @@ class detection_default():
                 if( Kappa < seuil_laplace) :
                     print("Signal impulsif laplacien : c'est un défaut")
                     print("Kappa : ", Kappa)
-                    return True
+                    return Kappa,pic
                 else :
-                    print("Signal non impulsif laplacien: ce n'est pas un défaut" %Kappa)
+                    print("Signal non impulsif laplacien: ce n'est pas un défaut")
                     print("Kappa : ", Kappa)
-                    return False
+                    return False , pic
             else :
                 D = sum(enveloppe['Amplitude'])*pace_norm
                 Kappa = D/(np.sqrt(2*np.pi)*std**3)
                 if( Kappa > seuil_norm) :
                     print("Signal impulsif normale: c'est un défaut")
                     print("Kappa : ", Kappa)
-                    return True
+                    return Kappa,pic
                 else :
-                    print("Signal non impulsif normale : ce n'est pas un défaut" %Kappa)
+                    print("Signal non impulsif normale : ce n'est pas un défaut")
                     print("Kappa : ", Kappa)
-                    return False
+                    return False , pic
         
             
     def is_ok(self,M,m,pic,current_fq,current_amp,next_amp,previous_amp,max_amp):
